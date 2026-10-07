@@ -17,7 +17,7 @@ const envSchema = z.object({
   SEED_DEFAULT_PASSWORD: z.string().min(1).default("Demo123!"),
   LLM_BASE_URL: z.string().url().default("https://api.groq.com/openai/v1"),
   LLM_API_KEY: z.string().min(1, "LLM_API_KEY is required"),
-  LLM_MODEL: z.string().min(1).default("llama-3.3-70b-versatile"),
+  LLM_MODEL: z.string().min(1).default("openai/gpt-oss-120b"),
   LLM_TIMEOUT_MS: z.coerce.number().default(60000),
   LLM_TEMPERATURE: z.coerce.number().default(0),
 });
