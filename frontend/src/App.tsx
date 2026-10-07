@@ -23,6 +23,57 @@ type DraftTask = { title: string | null; description: string | null; assigneeId:
 type DraftProject = { name: string | null; clientName: string | null; description: string | null; managerId: string | null; deadline: string | null; tasks: DraftTask[] };
 type StudioDraft = { runId?: string; draft: { projects: DraftProject[] }; issues?: Array<{ path: string; message: string }> };
 type Envelope<T> = { data: T; meta?: { totalPages?: number; total?: number } };
+function isIsoDate(value: string | null | undefined) {
+  if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const [y, m, d] = value.split("-").map(Number);
+  if (!y || !m || !d) return false;
+  const date = new Date(Date.UTC(y, m - 1, d));
+  return date.getUTCFullYear() === y && date.getUTCMonth() === m - 1 && date.getUTCDate() === d;
+}
+function localDraftIssues(draft: { projects: DraftProject[] }, members: Member[]) {
+  const issues: Array<{ path: string; message: string }> = [];
+  const managerCodes = new Set(members.filter((m) => m.role === "MANAGER").map((m) => m.code));
+  const agentCodes = new Set(members.filter((m) => m.role === "AGENT").map((m) => m.code));
+  draft.projects.forEach((project, pi) => {
+    const base = `projects[${pi}]`;
+    if (!project.name?.trim()) issues.push({ path: `${base}.name`, message: "Project name is required" });
+    if (!project.clientName?.trim()) issues.push({ path: `${base}.clientName`, message: "Client name is required" });
+    if (!isIsoDate(project.deadline)) issues.push({ path: `${base}.deadline`, message: "Pick a valid project deadline" });
+    if (!project.managerId || (managerCodes.size > 0 && !managerCodes.has(project.managerId))) {
+      issues.push({ path: `${base}.managerId`, message: "Select a manager" });
+    }
+    if (!project.tasks.length) issues.push({ path: `${base}.tasks`, message: "Add at least one task" });
+    const titles = new Set<string>();
+    project.tasks.forEach((task, ti) => {
+      const tBase = `${base}.tasks[${ti}]`;
+      if (!task.title?.trim()) issues.push({ path: `${tBase}.title`, message: "Task title is required" });
+      else if (titles.has(task.title.trim().toLowerCase())) issues.push({ path: `${tBase}.title`, message: "Duplicate task title" });
+      if (task.title?.trim()) titles.add(task.title.trim().toLowerCase());
+      if (!task.assigneeId || (agentCodes.size > 0 && !agentCodes.has(task.assigneeId))) {
+        issues.push({ path: `${tBase}.assigneeId`, message: "Select a developer" });
+      }
+      if (!isIsoDate(task.deadline)) issues.push({ path: `${tBase}.deadline`, message: "Pick a valid task deadline" });
+      else if (isIsoDate(project.deadline) && task.deadline! > project.deadline!) {
+        issues.push({ path: `${tBase}.deadline`, message: `Task deadline must be on or before ${project.deadline}` });
+      }
+      const hours = Number(task.estimatedHours);
+      if (!Number.isFinite(hours) || hours <= 0) issues.push({ path: `${tBase}.estimatedHours`, message: "Enter hours greater than 0" });
+    });
+  });
+  return issues;
+}
+function fieldIssue(issues: Array<{ path: string; message: string }> | undefined, path: string) {
+  return issues?.find((issue) => issue.path === path)?.message;
+}
+function DraftField({ label, error, children }: { label: string; error?: string; children: ReactNode }) {
+  return (
+    <label>
+      {label}
+      {children}
+      {error && <small className="inline-error">{error}</small>}
+    </label>
+  );
+}
 const demoAccounts = ["admin@novaworks.example", "ayesha@novaworks.example", "bilal@novaworks.example", "hina@novaworks.example", "ali@novaworks.example", "hamza@novaworks.example", "sara@novaworks.example", "usman@novaworks.example", "zain@novaworks.example", "maryam@novaworks.example"];
 function roleFor(email?: string, role?: Role): Role { if (role) return role; if (email === demoAccounts[0]) return "ADMIN"; if (email && demoAccounts.slice(1, 4).includes(email)) return "MANAGER"; return "AGENT"; }
 function useRole(): Role { const user = useAuthStore((s) => s.user); return roleFor(user?.email, user?.role); }
@@ -91,29 +142,75 @@ function StudioPage() {
   const [result, setResult] = useState<{ projectCount: number; taskCount: number } | null>(null);
   const [correction, setCorrection] = useState<StudioDraft | null>(null);
   const [validationMessage, setValidationMessage] = useState("");
+  const [touched, setTouched] = useState(false);
+  const team = useResource<Member[]>("/api/v1/team", ["team"]);
+  const members = team.data?.data ?? [];
+  const managers = members.filter((m) => m.role === "MANAGER");
+  const agents = members.filter((m) => m.role === "AGENT");
   const convert = useMutation({
     mutationFn: () => apiRequest<{ data: { projectCount: number; taskCount: number } }>("/api/v1/transcripts/convert", { method: "POST", body: { transcript } }),
     onSuccess: (data) => { setCorrection(null); setResult(data.data); void queryClient.invalidateQueries({ queryKey: ["projects"] }); },
-    onError: (error) => { if (error instanceof ApiError && error.status === 422 && error.details && typeof error.details === "object" && "draft" in error.details) setCorrection(error.details as StudioDraft); },
+    onError: (error) => { if (error instanceof ApiError && error.status === 422 && error.details && typeof error.details === "object" && "draft" in error.details) { setCorrection(error.details as StudioDraft); setTouched(true); } },
   });
-  const validate = useMutation({ mutationFn: () => apiRequest<{ data?: { issues?: StudioDraft["issues"] } }>("/api/v1/transcripts/validate", { method: "POST", body: { runId: correction?.runId, draft: correction?.draft } }), onSuccess: (response) => { const issues = response.data?.issues ?? []; setCorrection((current) => current ? { ...current, issues } : null); setValidationMessage(issues.length ? `${issues.length} item${issues.length === 1 ? "" : "s"} still need attention.` : "Everything looks ready to save."); } });
-  const commit = useMutation({ mutationFn: () => apiRequest<{ data: { projectCount?: number; taskCount?: number } }>("/api/v1/transcripts/commit", { method: "POST", body: { runId: correction?.runId, draft: correction?.draft } }), onSuccess: (response) => { setCorrection(null); setResult({ projectCount: response.data.projectCount ?? 0, taskCount: response.data.taskCount ?? 0 }); void queryClient.invalidateQueries({ queryKey: ["projects"] }); void queryClient.invalidateQueries({ queryKey: ["my-tasks"] }); } });
+  const liveIssues = correction ? localDraftIssues(correction.draft, members) : [];
+  const shownIssues = [...(correction?.issues ?? []), ...liveIssues].filter((issue, index, list) => list.findIndex((item) => item.path === issue.path) === index);
+  const validate = useMutation({
+    mutationFn: async () => {
+      const local = localDraftIssues(correction!.draft, members);
+      if (local.length) {
+        setCorrection((current) => current ? { ...current, issues: local } : current);
+        setValidationMessage(`${local.length} field${local.length === 1 ? "" : "s"} still need attention.`);
+        throw new Error("Fix the highlighted fields first.");
+      }
+      return apiRequest<{ data?: { issues?: StudioDraft["issues"]; valid?: boolean } }>("/api/v1/transcripts/validate", { method: "POST", body: { runId: correction?.runId, draft: correction?.draft } });
+    },
+    onSuccess: (response) => {
+      const issues = response.data?.issues ?? [];
+      setCorrection((current) => current ? { ...current, issues } : null);
+      setValidationMessage(issues.length ? `${issues.length} item${issues.length === 1 ? "" : "s"} still need attention.` : "Everything looks ready to save.");
+    },
+  });
+  const commit = useMutation({
+    mutationFn: async () => {
+      const local = localDraftIssues(correction!.draft, members);
+      if (local.length) {
+        setCorrection((current) => current ? { ...current, issues: local } : current);
+        throw new Error("Fix the highlighted fields first.");
+      }
+      return apiRequest<{ data: { projectCount?: number; taskCount?: number } }>("/api/v1/transcripts/commit", { method: "POST", body: { runId: correction?.runId, draft: correction?.draft } });
+    },
+    onSuccess: (response) => { setCorrection(null); setResult({ projectCount: response.data.projectCount ?? 0, taskCount: response.data.taskCount ?? 0 }); void queryClient.invalidateQueries({ queryKey: ["projects"] }); void queryClient.invalidateQueries({ queryKey: ["my-tasks"] }); },
+  });
   function editDraft(projectIndex: number, taskIndex: number, field: keyof DraftProject | keyof DraftTask, value: string) {
+    setTouched(true);
     setCorrection((current) => {
       if (!current) return current;
       const projects = current.draft.projects.map((project, index) => {
         if (index !== projectIndex) return project;
         if (taskIndex < 0) return { ...project, [field]: value };
-        return { ...project, tasks: project.tasks.map((task, index) => index === taskIndex ? { ...task, [field]: field === "estimatedHours" ? Number(value) : value } : task) };
+        return { ...project, tasks: project.tasks.map((task, index) => index === taskIndex ? { ...task, [field]: field === "estimatedHours" ? (value === "" ? null : Number(value)) : value } : task) };
       });
-      return { ...current, draft: { projects } };
+      return { ...current, draft: { projects }, issues: current.issues?.filter((issue) => {
+        const path = taskIndex < 0 ? `projects[${projectIndex}].${field}` : `projects[${projectIndex}].tasks[${taskIndex}].${field}`;
+        return issue.path !== path;
+      }) };
     });
     setValidationMessage("");
   }
   const sample = "We met with the UrbanCart team to plan the new storefront. Ayesha will manage the work, with Ali building the product catalog by October 20. Hamza will create the checkout experience, Sara will handle responsive design, and Usman will prepare the launch QA plan.";
   return <Page eyebrow="Admin" title={correction ? "Review required" : "Transcript Studio"} subtitle={correction ? "Fix the highlighted fields, then validate again before saving." : "Paste a meeting transcript to generate projects, tasks and assignments."}>
     <div className="studio-layout"><div className="studio-paper">
-      {correction ? <><p className="eyebrow">Review draft</p><div className="correction-list">{correction.draft.projects.map((project, pi) => <section className="correction-project" key={pi}><h2>Project {pi + 1}</h2>{(["name", "clientName", "deadline", "managerId"] as const).map((field) => <label key={field}>{field === "clientName" ? "Client" : field === "managerId" ? "Manager ID" : field === "name" ? "Project name" : "Project deadline"}<input value={project[field] ?? ""} onChange={(e) => editDraft(pi, -1, field, e.target.value)} aria-invalid={!!correction.issues?.some((issue) => issue.path === `projects[${pi}].${field}`)}/>{correction.issues?.filter((issue) => issue.path === `projects[${pi}].${field}`).map((issue) => <small className="inline-error" key={issue.path}>{issue.message}</small>)}</label>)}{project.tasks.map((task, ti) => <div className="correction-task" key={ti}><h3>Task {ti + 1}</h3>{(["title", "assigneeId", "deadline", "estimatedHours"] as const).map((field) => <label key={field}>{field === "assigneeId" ? "Assignee ID" : field === "estimatedHours" ? "Estimated hours" : field === "title" ? "Task title" : "Task deadline"}<input value={task[field] ?? ""} onChange={(e) => editDraft(pi, ti, field, e.target.value)} aria-invalid={!!correction.issues?.some((issue) => issue.path === `projects[${pi}].tasks[${ti}].${field}`)}/>{correction.issues?.filter((issue) => issue.path === `projects[${pi}].tasks[${ti}].${field}`).map((issue) => <small className="inline-error" key={issue.path}>{issue.message}</small>)}</label>)}</div>)}</section>)}</div><div className="correction-actions"><button className="button-link" onClick={() => { setCorrection(null); setValidationMessage(""); }}>Back to transcript</button><button className="button-link" disabled={validate.isPending} onClick={() => validate.mutate()}>{validate.isPending ? "Validating…" : "Validate again"}</button><button className="primary-button" disabled={commit.isPending || (correction.issues?.length ?? 0) > 0} onClick={() => commit.mutate()}>{commit.isPending ? "Saving…" : "Save plan"}</button></div>{validationMessage && <p className="inline-error" role="status">{validationMessage}</p>}</> : <><label htmlFor="transcript" className="eyebrow">Meeting transcript</label><textarea id="transcript" value={transcript} onChange={(e) => setTranscript(e.target.value)} placeholder="Paste your meeting transcript here…"/><div className="paper-footer"><span>{transcript.trim().length} characters · private to this session</span><button className="button-link" onClick={() => setTranscript(sample)}>Load sample transcript</button></div><button className="primary-button" disabled={transcript.trim().length < 50 || convert.isPending} onClick={() => { setResult(null); convert.mutate(); }}>{convert.isPending ? "Analyzing transcript…" : "Generate plan"}</button>{convert.error && !correction && <p className="inline-error" role="alert">{convert.error.message}. Your transcript is saved here; you can revise it and try again.</p>}</>}
+      {correction ? <><p className="eyebrow">Review draft</p><div className="correction-list">{correction.draft.projects.map((project, pi) => <section className="correction-project" key={pi}><h2>Project {pi + 1}</h2><div className="correction-grid">
+        <DraftField label="Project name" error={fieldIssue(shownIssues, `projects[${pi}].name`)}><input required maxLength={150} value={project.name ?? ""} onChange={(e) => editDraft(pi, -1, "name", e.target.value)} aria-invalid={!!fieldIssue(shownIssues, `projects[${pi}].name`)} /></DraftField>
+        <DraftField label="Client" error={fieldIssue(shownIssues, `projects[${pi}].clientName`)}><input required maxLength={150} value={project.clientName ?? ""} onChange={(e) => editDraft(pi, -1, "clientName", e.target.value)} aria-invalid={!!fieldIssue(shownIssues, `projects[${pi}].clientName`)} /></DraftField>
+        <DraftField label="Project deadline" error={fieldIssue(shownIssues, `projects[${pi}].deadline`)}><input type="date" required value={isIsoDate(project.deadline) ? project.deadline! : ""} onChange={(e) => editDraft(pi, -1, "deadline", e.target.value)} aria-invalid={!!fieldIssue(shownIssues, `projects[${pi}].deadline`)} /></DraftField>
+        <DraftField label="Manager" error={fieldIssue(shownIssues, `projects[${pi}].managerId`)}><select required value={project.managerId ?? ""} onChange={(e) => editDraft(pi, -1, "managerId", e.target.value)} aria-invalid={!!fieldIssue(shownIssues, `projects[${pi}].managerId`)}><option value="">Select manager</option>{managers.map((m) => <option key={m.id} value={m.code}>{m.name} ({m.code})</option>)}</select></DraftField>
+      </div>{project.tasks.map((task, ti) => <div className="correction-task" key={ti}><h3>Task {ti + 1}</h3><div className="correction-grid">
+        <DraftField label="Task title" error={fieldIssue(shownIssues, `projects[${pi}].tasks[${ti}].title`)}><input required maxLength={150} value={task.title ?? ""} onChange={(e) => editDraft(pi, ti, "title", e.target.value)} aria-invalid={!!fieldIssue(shownIssues, `projects[${pi}].tasks[${ti}].title`)} /></DraftField>
+        <DraftField label="Assignee" error={fieldIssue(shownIssues, `projects[${pi}].tasks[${ti}].assigneeId`)}><select required value={task.assigneeId ?? ""} onChange={(e) => editDraft(pi, ti, "assigneeId", e.target.value)} aria-invalid={!!fieldIssue(shownIssues, `projects[${pi}].tasks[${ti}].assigneeId`)}><option value="">Select developer</option>{agents.map((a) => <option key={a.id} value={a.code}>{a.name} ({a.code})</option>)}</select></DraftField>
+        <DraftField label="Task deadline" error={fieldIssue(shownIssues, `projects[${pi}].tasks[${ti}].deadline`)}><input type="date" required max={isIsoDate(project.deadline) ? project.deadline! : undefined} value={isIsoDate(task.deadline) ? task.deadline! : ""} onChange={(e) => editDraft(pi, ti, "deadline", e.target.value)} aria-invalid={!!fieldIssue(shownIssues, `projects[${pi}].tasks[${ti}].deadline`)} /></DraftField>
+        <DraftField label="Estimated hours" error={fieldIssue(shownIssues, `projects[${pi}].tasks[${ti}].estimatedHours`)}><input type="number" required min={0.5} max={1000} step={0.5} value={task.estimatedHours ?? ""} onChange={(e) => editDraft(pi, ti, "estimatedHours", e.target.value)} aria-invalid={!!fieldIssue(shownIssues, `projects[${pi}].tasks[${ti}].estimatedHours`)} /></DraftField>
+      </div></div>)}</section>)}</div><div className="correction-actions"><button className="button-link" onClick={() => { setCorrection(null); setValidationMessage(""); setTouched(false); }}>Back to transcript</button><button className="button-link" disabled={validate.isPending} onClick={() => { setTouched(true); validate.mutate(); }}>{validate.isPending ? "Validating…" : "Validate again"}</button><button className="primary-button" disabled={commit.isPending || (touched && shownIssues.length > 0)} onClick={() => { setTouched(true); commit.mutate(); }}>{commit.isPending ? "Saving…" : "Save plan"}</button></div>{(validationMessage || (touched && shownIssues.length > 0)) && <p className="inline-error" role="status">{validationMessage || `${shownIssues.length} field${shownIssues.length === 1 ? "" : "s"} still need attention.`}</p>}</> : <><label htmlFor="transcript" className="eyebrow">Meeting transcript</label><textarea id="transcript" value={transcript} onChange={(e) => setTranscript(e.target.value)} placeholder="Paste your meeting transcript here…"/><div className="paper-footer"><span>{transcript.trim().length} characters · private to this session</span><button className="button-link" onClick={() => setTranscript(sample)}>Load sample transcript</button></div><button className="primary-button" disabled={transcript.trim().length < 50 || convert.isPending} onClick={() => { setResult(null); convert.mutate(); }}>{convert.isPending ? "Analyzing transcript…" : "Generate plan"}</button>{convert.error && !correction && <p className="inline-error" role="alert">{convert.error.message}. Your transcript is saved here; you can revise it and try again.</p>}</>}
     </div><aside className="studio-aside"><p className="eyebrow">How it works</p><h2>Paste a transcript, review the result, save.</h2><p>Projects, owners, deadlines and estimates are extracted from the conversation. You can review and edit everything before it is saved.</p>{result && <div className="result-reveal" role="status"><span className="eyebrow">Plan created</span><strong>{result.projectCount} projects</strong><span>{result.taskCount} tasks are ready for the team.</span></div>}</aside></div>
   </Page>;
 }
