@@ -1,5 +1,4 @@
 import { env } from "../../config/env";
-import { logger } from "../logger";
 import { HttpError } from "../../utils/errors";
 import type { LlmClient } from "./llm.types";
 
@@ -44,28 +43,10 @@ export class OpenAiCompatibleClient implements LlmClient {
       });
 
       if (!response.ok) {
-        const errorBody = await response.text().catch(() => "");
-        let providerMessage = "";
-        try {
-          const parsed = JSON.parse(errorBody) as { error?: { message?: string; code?: string } };
-          providerMessage = parsed.error?.message ?? "";
-        } catch {
-          providerMessage = errorBody.slice(0, 300);
-        }
-
-        logger.error("LLM provider error", {
-          status: response.status,
-          model,
-          providerMessage: providerMessage.slice(0, 500),
-        });
-
         throw new HttpError(
           502,
-          providerMessage
-            ? `AI provider request failed: ${providerMessage}`
-            : "AI provider request failed. Please try again.",
+          "AI provider request failed. Please try again.",
           "AI_FAILURE",
-          { status: response.status, model },
         );
       }
 
