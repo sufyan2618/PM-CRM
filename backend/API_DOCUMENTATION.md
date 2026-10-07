@@ -2,7 +2,7 @@
 
 Base URL: `http://localhost:5000`
 
-Auth Base Path: `/api/auth`
+Auth Base Path: `/api/v1/auth`
 
 All responses are JSON.
 
@@ -32,7 +32,7 @@ Error:
 - Protected APIs require:
   - `Authorization: Bearer <accessToken>`
 - Token refresh uses:
-  - Cookie (`refreshToken`) via `POST /api/auth/refresh-token`
+  - Cookie (`refreshToken`) via `POST /api/v1/auth/refresh-token`
 - Use `credentials: "include"` for login/refresh/logout calls.
 
 ## User Shape
@@ -69,7 +69,7 @@ Returned user object:
 ## Endpoints
 
 ### 1) Register
-`POST /api/auth/register`
+`POST /api/v1/auth/register`
 
 Request body:
 ```json
@@ -107,7 +107,7 @@ Common errors:
 ---
 
 ### 2) Verify OTP
-`POST /api/auth/verify-otp`
+`POST /api/v1/auth/verify-otp`
 
 Request body:
 ```json
@@ -133,7 +133,7 @@ Common errors:
 ---
 
 ### 3) Resend OTP
-`POST /api/auth/resend-otp`
+`POST /api/v1/auth/resend-otp`
 
 Request body:
 ```json
@@ -158,7 +158,7 @@ Common errors:
 ---
 
 ### 4) Login
-`POST /api/auth/login`
+`POST /api/v1/auth/login`
 
 Request body:
 ```json
@@ -195,7 +195,7 @@ Common errors:
 ---
 
 ### 5) Refresh Access Token
-`POST /api/auth/refresh-token`
+`POST /api/v1/auth/refresh-token`
 
 No body required.
 
@@ -217,7 +217,7 @@ Common errors:
 ---
 
 ### 6) Logout
-`POST /api/auth/logout`
+`POST /api/v1/auth/logout`
 
 Requires refresh token cookie (if available).
 
@@ -235,7 +235,7 @@ Common errors:
 ---
 
 ### 7) Profile (Protected)
-`GET /api/auth/profile`
+`GET /api/v1/auth/profile`
 
 Headers (if not using cookie):
 ```http
@@ -266,7 +266,7 @@ Common errors:
 ---
 
 ### 8) Reset Password (Send OTP)
-`POST /api/auth/reset-password`
+`POST /api/v1/auth/reset-password`
 
 Request body:
 ```json
@@ -290,7 +290,7 @@ Common errors:
 ---
 
 ### 9) Update Password
-`POST /api/auth/update-password`
+`POST /api/v1/auth/update-password`
 
 Request body:
 ```json
@@ -316,7 +316,7 @@ Common errors:
 
 ## Health Endpoint
 
-`GET /api/health`
+`GET /api/v1/health`
 
 Success (`200`):
 ```json
@@ -338,5 +338,5 @@ Success (`200`):
 - For cookie-based auth, set:
   - `withCredentials: true` (Axios), or
   - `credentials: "include"` (fetch)
-- On app start, call `/api/auth/refresh-token` (with credentials) to get a fresh access token.
+- On app start, call `/api/v1/auth/refresh-token` (with credentials) to get a fresh access token.
 - Send `Authorization: Bearer <accessToken>` for protected routes.
