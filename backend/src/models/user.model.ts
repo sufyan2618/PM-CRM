@@ -13,9 +13,18 @@ const emailRateLimitSchema = new Schema(
 const userSchema = new Schema<IUser>(
   {
     firstName: { type: String, required: true, trim: true },
-    lastName: { type: String, required: true, trim: true },
+    lastName: { type: String, default: "", trim: true },
     email: { type: String, required: true, unique: true, lowercase: true, trim: true },
-    password: { type: String, required: true },
+    password: { type: String, required: true, select: false },
+    code: { type: String, required: true, unique: true, uppercase: true, trim: true },
+    role: {
+      type: String,
+      enum: ["ADMIN", "MANAGER", "AGENT"],
+      required: true,
+      index: true,
+    },
+    specialization: { type: String, default: "", trim: true },
+    skills: { type: [String], default: [] },
     isVerified: { type: Boolean, default: false },
     loginAttempts: { type: Number, default: 0 },
     isBlocked: { type: Boolean, default: false },
@@ -28,5 +37,16 @@ const userSchema = new Schema<IUser>(
   },
   { timestamps: true },
 );
+
+userSchema.set("toJSON", {
+  transform(_doc, ret) {
+    const obj = ret as unknown as Record<string, unknown>;
+    obj.id = String(obj._id);
+    delete obj._id;
+    delete obj.__v;
+    delete obj.password;
+    return obj;
+  },
+});
 
 export const UserModel = mongoose.model<IUser>("User", userSchema);

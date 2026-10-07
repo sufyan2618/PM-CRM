@@ -6,14 +6,19 @@ export function requireAuth(req: Request, _res: Response, next: NextFunction) {
   const accessToken = req.headers.authorization?.replace("Bearer ", "");
 
   if (!accessToken) {
-    next(new HttpError(401, "Unauthorized"));
+    next(new HttpError(401, "Unauthorized", "UNAUTHENTICATED"));
     return;
   }
 
   try {
-    req.user = verifyAccessToken(accessToken);
+    const decoded = verifyAccessToken(accessToken);
+    if (!decoded.role || !decoded.code) {
+      next(new HttpError(401, "Invalid access token", "UNAUTHENTICATED"));
+      return;
+    }
+    req.user = decoded;
     next();
   } catch {
-    next(new HttpError(401, "Invalid access token"));
+    next(new HttpError(401, "Invalid access token", "UNAUTHENTICATED"));
   }
 }

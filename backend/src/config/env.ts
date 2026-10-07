@@ -14,6 +14,12 @@ const envSchema = z.object({
   REDIS_URL: z.string().url("REDIS_URL must be a valid URL"),
   EMAIL_FROM: z.string().email("EMAIL_FROM must be a valid email"),
   BREVO_API_KEY: z.string().min(1, "BREVO_API_KEY is required"),
+  SEED_DEFAULT_PASSWORD: z.string().min(1).default("Demo123!"),
+  LLM_BASE_URL: z.string().url().default("https://api.groq.com/openai/v1"),
+  LLM_API_KEY: z.string().min(1, "LLM_API_KEY is required"),
+  LLM_MODEL: z.string().min(1).default("llama-3.3-70b-versatile"),
+  LLM_TIMEOUT_MS: z.coerce.number().default(60000),
+  LLM_TEMPERATURE: z.coerce.number().default(0),
 });
 
 const parsedEnv = envSchema.safeParse(process.env);
@@ -36,4 +42,10 @@ export const env = {
   REDIS_URL: value.REDIS_URL,
   EMAIL_FROM: value.EMAIL_FROM,
   BREVO_API_KEY: value.BREVO_API_KEY,
+  SEED_DEFAULT_PASSWORD: value.SEED_DEFAULT_PASSWORD,
+  LLM_BASE_URL: value.LLM_BASE_URL,
+  LLM_API_KEY: value.LLM_API_KEY,
+  LLM_MODEL: value.LLM_MODEL,
+  LLM_TIMEOUT_MS: value.LLM_TIMEOUT_MS,
+  LLM_TEMPERATURE: value.LLM_TEMPERATURE,
 };

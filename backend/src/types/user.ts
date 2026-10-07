@@ -1,5 +1,7 @@
 import type { Document } from "mongoose";
 
+export type UserRole = "ADMIN" | "MANAGER" | "AGENT";
+
 export interface IEmailRateLimit {
   count: number;
   windowStart: Date;
@@ -11,6 +13,10 @@ export interface IUser extends Document {
   lastName: string;
   email: string;
   password: string;
+  code: string;
+  role: UserRole;
+  specialization: string;
+  skills: string[];
   isVerified: boolean;
   loginAttempts: number;
   isBlocked: boolean;
@@ -22,4 +28,8 @@ export interface IUser extends Document {
   emailRateLimit: IEmailRateLimit;
   createdAt: Date;
   updatedAt: Date;
+}
+
+export function displayName(user: { firstName: string; lastName?: string }): string {
+  return [user.firstName, user.lastName].filter(Boolean).join(" ").trim();
 }

@@ -2,10 +2,13 @@ import jwt from "jsonwebtoken";
 import type { Response } from "express";
 import type { SignOptions } from "jsonwebtoken";
 import { env } from "../config/env";
+import type { UserRole } from "../types/user";
 
 export interface BaseTokenPayload {
   userId: string;
   email: string;
+  role: UserRole;
+  code: string;
 }
 
 export interface JwtPayload extends BaseTokenPayload {
@@ -39,6 +42,9 @@ export function verifyAccessToken(token: string) {
   const decoded = jwt.verify(token, env.JWT_SECRET) as JwtPayload;
   if (decoded.tokenType !== "access") {
     throw new Error("Invalid access token");
+  }
+  if (!decoded.role || !decoded.code) {
+    throw new Error("Invalid access token payload");
   }
   return decoded as AccessTokenPayload;
 }

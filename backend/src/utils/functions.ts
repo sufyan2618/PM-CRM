@@ -1,14 +1,20 @@
-import type{ HydratedDocument } from "mongoose";
+import type { HydratedDocument } from "mongoose";
 import type { IUser } from "../types/user";
+import { displayName } from "../types/user";
 import { HttpError } from "./errors";
 
 export function sanitizeUser(user: HydratedDocument<IUser> | null) {
   if (!user) return null;
   return {
     id: user._id.toString(),
+    code: user.code,
+    name: displayName(user),
     firstName: user.firstName,
     lastName: user.lastName,
     email: user.email,
+    role: user.role,
+    specialization: user.specialization,
+    skills: user.skills ?? [],
     isVerified: user.isVerified,
     isBlocked: user.isBlocked,
     createdAt: user.createdAt,
