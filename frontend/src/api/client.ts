@@ -33,7 +33,7 @@ async function readBody(response: Response): Promise<ErrorBody> {
 
 async function refreshAccessToken() {
   if (!refreshRequest) {
-    refreshRequest = fetch(`${API_ORIGIN}/api/auth/refresh-token`, {
+    refreshRequest = fetch(`${API_ORIGIN}/api/v1/auth/refresh-token`, {
       method: "POST",
       credentials: "include",
       headers: { "Content-Type": "application/json" },
@@ -93,3 +93,4 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
 
   return payload as T;
 }
+

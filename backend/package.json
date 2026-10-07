@@ -5,7 +5,7 @@
   "private": true,
   "scripts": {
     "dev": "bun --watch --env=.env src/index.ts",
-    "start": "NODE_ENV=production bun src/index.ts",
+    "start": "bun --env=.env src/index.ts",
     "dev:worker": "bun --watch --env=.env src/workers/email.worker.ts",
     "typecheck": "tsc --noEmit",
     "seed": "bun --env=.env run src/scripts/seed-users.ts",

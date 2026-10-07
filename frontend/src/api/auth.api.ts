@@ -13,7 +13,7 @@ import { apiRequest } from "./client";
 
 export const authApi = {
   register(input: RegisterInput) {
-    return apiRequest<ProfileResponse>("/api/auth/register", {
+    return apiRequest<ProfileResponse>("/api/v1/auth/register", {
       method: "POST",
       body: input,
       auth: false,
@@ -21,7 +21,7 @@ export const authApi = {
   },
 
   verifyOtp(input: VerifyOtpInput) {
-    return apiRequest<MessageResponse>("/api/auth/verify-otp", {
+    return apiRequest<MessageResponse>("/api/v1/auth/verify-otp", {
       method: "POST",
       body: input,
       auth: false,
@@ -29,7 +29,7 @@ export const authApi = {
   },
 
   resendOtp(input: ResendOtpInput) {
-    return apiRequest<MessageResponse>("/api/auth/resend-otp", {
+    return apiRequest<MessageResponse>("/api/v1/auth/resend-otp", {
       method: "POST",
       body: input,
       auth: false,
@@ -37,7 +37,7 @@ export const authApi = {
   },
 
   login(input: LoginInput) {
-    return apiRequest<LoginResponse>("/api/auth/login", {
+    return apiRequest<LoginResponse>("/api/v1/auth/login", {
       method: "POST",
       body: input,
       auth: false,
@@ -45,7 +45,7 @@ export const authApi = {
   },
 
   refresh() {
-    return apiRequest<RefreshResponse>("/api/auth/refresh-token", {
+    return apiRequest<RefreshResponse>("/api/v1/auth/refresh-token", {
       method: "POST",
       body: {},
       auth: false,
@@ -53,18 +53,18 @@ export const authApi = {
   },
 
   logout() {
-    return apiRequest<MessageResponse>("/api/auth/logout", {
+    return apiRequest<MessageResponse>("/api/v1/auth/logout", {
       method: "POST",
       auth: false,
     });
   },
 
   profile() {
-    return apiRequest<ProfileResponse>("/api/auth/profile");
+    return apiRequest<ProfileResponse>("/api/v1/auth/profile");
   },
 
   resetPassword(email: string) {
-    return apiRequest<MessageResponse>("/api/auth/reset-password", {
+    return apiRequest<MessageResponse>("/api/v1/auth/reset-password", {
       method: "POST",
       body: { email },
       auth: false,
@@ -72,10 +72,11 @@ export const authApi = {
   },
 
   updatePassword(input: UpdatePasswordInput) {
-    return apiRequest<MessageResponse>("/api/auth/update-password", {
+    return apiRequest<MessageResponse>("/api/v1/auth/update-password", {
       method: "POST",
       body: input,
       auth: false,
     });
   },
 };
+
