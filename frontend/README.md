@@ -73,3 +73,24 @@ export default defineConfig([
 ])
 
 ```
+# NovaWorks Frontend
+
+Editorial project workspace for NovaWorks Technologies, built with React, TypeScript, Vite, TanStack Query, and Zustand.
+
+## Run locally
+
+1. Copy `.env.example` to `.env` if you need to change the API settings.
+2. Install dependencies with `bun install`.
+3. Start the UI with `bun run dev`.
+
+The Vite proxy forwards `/api` requests to `http://localhost:5000` by default. Set `VITE_DEV_PROXY_TARGET` to use a different backend host. The CRM screens use `/api/v1` as specified in `frontend-spec.md`; auth uses the current backend's `/api/auth` endpoints. `VITE_API_BASE_URL` can point the CRM API client at a deployed API.
+
+## Demo access
+
+The sign-in page includes quick-fill demo account chips for the admin, project managers, and developers. The shared demo password is `Demo123!`.
+
+## Backend compatibility
+
+The current backend exposes auth, profile, and health endpoints. The project, task, team, and transcript screens are wired to the `/api/v1` contracts in the frontend specification and show a retryable error state until those CRM endpoints are available.
+
+Screenshots: add workspace and transcript studio captures here.

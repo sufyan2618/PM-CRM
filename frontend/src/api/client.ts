@@ -1,17 +1,21 @@
 import { useAuthStore } from "../store/auth.store";
 import { ApiError } from "../utils/api-error";
 
-const API_BASE_URL = import.meta.env.VITE_API_URL ?? "";
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "/api/v1";
+const API_ORIGIN = API_BASE_URL.startsWith("http") ? API_BASE_URL.replace(/\/api\/v1\/?$/, "") : "";
 
 type RequestOptions = {
-  method?: "GET" | "POST";
+  method?: "GET" | "POST" | "PATCH" | "DELETE";
   body?: unknown;
   auth?: boolean;
   retry?: boolean;
+  signal?: AbortSignal;
 };
 
 type ErrorBody = {
   message?: string;
+  error?: { message?: string; details?: unknown };
+  details?: unknown;
 };
 
 let refreshRequest: Promise<string | null> | null = null;
@@ -29,7 +33,7 @@ async function readBody(response: Response): Promise<ErrorBody> {
 
 async function refreshAccessToken() {
   if (!refreshRequest) {
-    refreshRequest = fetch(`${API_BASE_URL}/api/auth/refresh-token`, {
+    refreshRequest = fetch(`${API_ORIGIN}/api/auth/refresh-token`, {
       method: "POST",
       credentials: "include",
       headers: { "Content-Type": "application/json" },
@@ -52,7 +56,7 @@ async function refreshAccessToken() {
 }
 
 export async function apiRequest<T>(path: string, options: RequestOptions = {}): Promise<T> {
-  const { method = "GET", body, auth = true, retry = true } = options;
+  const { method = "GET", body, auth = true, retry = true, signal } = options;
   const headers: Record<string, string> = {};
 
   if (body !== undefined) {
@@ -64,17 +68,19 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
     if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
   }
 
-  const response = await fetch(`${API_BASE_URL}${path}`, {
+  const url = path.startsWith("/api/v1") ? `${API_BASE_URL.replace(/\/$/, "")}${path.slice(7)}` : `${API_ORIGIN}${path}`;
+  const response = await fetch(url, {
     method,
     credentials: "include",
     headers,
     body: body !== undefined ? JSON.stringify(body) : undefined,
+    signal,
   });
 
   if (response.status === 401 && auth && retry) {
     const accessToken = await refreshAccessToken();
     if (accessToken) {
-      return apiRequest<T>(path, { method, body, auth, retry: false });
+      return apiRequest<T>(path, { method, body, auth, retry: false, signal });
     }
     useAuthStore.getState().clearSession();
   }
@@ -82,7 +88,7 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
   const payload = await readBody(response);
 
   if (!response.ok) {
-    throw new ApiError(payload.message || "Something went wrong", response.status);
+    throw new ApiError(payload.error?.message || payload.message || "Something went wrong", response.status, payload.error?.details ?? payload.details);
   }
 
   return payload as T;

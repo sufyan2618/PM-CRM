@@ -21,10 +21,10 @@ export function AuthLayout({
   return (
     <main className="auth-screen">
       <section className="auth-art">
-        <p className="brand">Infinity</p>
+        <p className="brand">NovaWorks Technologies</p>
         <LottiePlayer className="auth-lottie" src={animationSrc} segment={segment} />
         <div className="auth-art-copy">
-          <h2>{title}</h2>
+          <h1>{title}</h1>
           <p>{subtitle}</p>
         </div>
       </section>

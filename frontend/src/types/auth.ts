@@ -5,6 +5,10 @@ export type User = {
   firstName: string;
   lastName: string;
   email: string;
+  role?: "ADMIN" | "MANAGER" | "AGENT";
+  code?: string;
+  specialization?: string;
+  skills?: string[];
   isVerified: boolean;
   isBlocked: boolean;
   createdAt: string;
