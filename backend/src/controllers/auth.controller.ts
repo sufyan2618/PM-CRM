@@ -18,7 +18,12 @@ import { addOtpEmailJob } from "../queues/email.queue";
 import { sanitizeUser, checkAndUpdateEmailRateLimit } from "../utils/functions";
 
 async function issueTokensAndPersistRefresh(user: HydratedDocument<IUser>) {
-  const payload = { userId: user._id.toString(), email: user.email };
+  const payload = {
+    userId: user._id.toString(),
+    email: user.email,
+    role: user.role,
+    code: user.code,
+  };
   const accessToken = signAccessToken(payload);
   const refreshToken = signRefreshToken(payload);
   user.refreshToken = refreshToken;
@@ -41,6 +46,10 @@ export const register = asyncHandler(async (req: Request, res: Response) => {
     lastName,
     email,
     password: await hashPassword(password),
+    code: `TMP${Date.now()}`,
+    role: "AGENT",
+    specialization: "",
+    skills: [],
     otp,
     otpExpiry: otpExpiry(),
     otpPurpose: "verify_email",
@@ -68,23 +77,23 @@ export const verifyOtp = asyncHandler(async (req: Request, res: Response) => {
 
   const user = await UserModel.findOne({ email });
   if (!user) {
-    throw new HttpError(404, "User not found");
+    throw new HttpError(404, "User not found", "NOT_FOUND");
   }
 
   if (!user.otp || !user.otpExpiry || !user.otpPurpose) {
-    throw new HttpError(400, "No OTP found");
+    throw new HttpError(400, "No OTP found", "VALIDATION_ERROR");
   }
 
   if (user.otpPurpose !== purpose) {
-    throw new HttpError(400, "OTP purpose mismatch");
+    throw new HttpError(400, "OTP purpose mismatch", "VALIDATION_ERROR");
   }
 
   if (user.otp !== otp) {
-    throw new HttpError(400, "Invalid OTP");
+    throw new HttpError(400, "Invalid OTP", "VALIDATION_ERROR");
   }
 
   if (user.otpExpiry.getTime() < Date.now()) {
-    throw new HttpError(400, "OTP expired");
+    throw new HttpError(400, "OTP expired", "VALIDATION_ERROR");
   }
 
   if (purpose === "verify_email") {
@@ -106,7 +115,7 @@ export const resendOtp = asyncHandler(async (req: Request, res: Response) => {
   const user = await UserModel.findOne({ email });
 
   if (!user) {
-    throw new HttpError(404, "User not found");
+    throw new HttpError(404, "User not found", "NOT_FOUND");
   }
 
   checkAndUpdateEmailRateLimit(user);
@@ -132,14 +141,14 @@ export const resendOtp = asyncHandler(async (req: Request, res: Response) => {
 
 export const login = asyncHandler(async (req: Request, res: Response) => {
   const { email, password } = req.body;
-  const user = await UserModel.findOne({ email });
+  const user = await UserModel.findOne({ email }).select("+password");
 
   if (!user) {
-    throw new HttpError(401, "Invalid credentials");
+    throw new HttpError(401, "Invalid credentials", "INVALID_CREDENTIALS");
   }
 
   if (user.isBlocked) {
-    throw new HttpError(403, "Account blocked due to too many failed attempts");
+    throw new HttpError(403, "Account blocked due to too many failed attempts", "FORBIDDEN");
   }
 
   const isValid = await comparePassword(password, user.password);
@@ -149,11 +158,15 @@ export const login = asyncHandler(async (req: Request, res: Response) => {
       user.isBlocked = true;
     }
     await user.save();
-    throw new HttpError(401, "Invalid credentials");
+    throw new HttpError(401, "Invalid credentials", "INVALID_CREDENTIALS");
   }
 
   if (!user.isVerified) {
-    throw new HttpError(403, "Please verify your email first");
+    throw new HttpError(403, "Please verify your email first", "FORBIDDEN");
+  }
+
+  if (!user.code || !user.role) {
+    throw new HttpError(403, "User profile incomplete. Please re-seed demo users.", "FORBIDDEN");
   }
 
   user.loginAttempts = 0;
@@ -173,27 +186,27 @@ export const login = asyncHandler(async (req: Request, res: Response) => {
 export const refreshAccessToken = asyncHandler(async (req: Request, res: Response) => {
   const refreshToken = req.cookies?.refreshToken;
   if (!refreshToken) {
-    throw new HttpError(401, "Refresh token not found");
+    throw new HttpError(401, "Refresh token not found", "UNAUTHENTICATED");
   }
 
-  let decoded: { userId: string; email: string };
+  let decoded: { userId: string; email: string; role?: string; code?: string };
   try {
     decoded = verifyRefreshToken(refreshToken);
   } catch {
-    throw new HttpError(401, "Invalid refresh token");
+    throw new HttpError(401, "Invalid refresh token", "UNAUTHENTICATED");
   }
 
   const user = await UserModel.findById(decoded.userId);
   if (!user) {
-    throw new HttpError(404, "User not found");
+    throw new HttpError(404, "User not found", "NOT_FOUND");
   }
 
   if (!user.refreshToken || user.refreshToken !== refreshToken) {
-    throw new HttpError(401, "Refresh token mismatch");
+    throw new HttpError(401, "Refresh token mismatch", "UNAUTHENTICATED");
   }
 
   if (!user.refreshTokenExpiry || user.refreshTokenExpiry.getTime() < Date.now()) {
-    throw new HttpError(401, "Refresh token expired");
+    throw new HttpError(401, "Refresh token expired", "UNAUTHENTICATED");
   }
 
   const tokens = await issueTokensAndPersistRefresh(user);
@@ -226,12 +239,12 @@ export const logout = asyncHandler(async (req: Request, res: Response) => {
 
 export const profile = asyncHandler(async (req: Request, res: Response) => {
   if (!req.user) {
-    throw new HttpError(401, "Unauthorized");
+    throw new HttpError(401, "Unauthorized", "UNAUTHENTICATED");
   }
 
   const user = await UserModel.findById(req.user.userId);
   if (!user) {
-    throw new HttpError(404, "User not found");
+    throw new HttpError(404, "User not found", "NOT_FOUND");
   }
 
   res.status(200).json({
@@ -240,12 +253,14 @@ export const profile = asyncHandler(async (req: Request, res: Response) => {
   });
 });
 
+export const me = profile;
+
 export const resetPassword = asyncHandler(async (req: Request, res: Response) => {
   const { email } = req.body;
   const user = await UserModel.findOne({ email });
 
   if (!user) {
-    throw new HttpError(404, "User not found");
+    throw new HttpError(404, "User not found", "NOT_FOUND");
   }
 
   checkAndUpdateEmailRateLimit(user);
@@ -271,22 +286,22 @@ export const resetPassword = asyncHandler(async (req: Request, res: Response) =>
 
 export const updatePassword = asyncHandler(async (req: Request, res: Response) => {
   const { email, otp, newPassword } = req.body;
-  const user = await UserModel.findOne({ email });
+  const user = await UserModel.findOne({ email }).select("+password");
 
   if (!user) {
-    throw new HttpError(404, "User not found");
+    throw new HttpError(404, "User not found", "NOT_FOUND");
   }
 
   if (!user.otp || !user.otpExpiry || user.otpPurpose !== "reset_password") {
-    throw new HttpError(400, "No reset OTP found");
+    throw new HttpError(400, "No reset OTP found", "VALIDATION_ERROR");
   }
 
   if (user.otp !== otp) {
-    throw new HttpError(400, "Invalid OTP");
+    throw new HttpError(400, "Invalid OTP", "VALIDATION_ERROR");
   }
 
   if (user.otpExpiry.getTime() < Date.now()) {
-    throw new HttpError(400, "OTP expired");
+    throw new HttpError(400, "OTP expired", "VALIDATION_ERROR");
   }
 
   user.password = await hashPassword(newPassword);

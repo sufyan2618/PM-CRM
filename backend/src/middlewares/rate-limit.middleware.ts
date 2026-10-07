@@ -1,6 +1,7 @@
 import rateLimit from "express-rate-limit";
 import { RedisStore } from "rate-limit-redis";
 import { redis } from "../lib/redis";
+import type { Request } from "express";
 
 const sendCommand = async (...args: string[]) => {
   const [command, ...rest] = args;
@@ -29,6 +30,18 @@ export const authRateLimiter = rateLimit({
   legacyHeaders: false,
   store: new RedisStore({
     prefix: "rl:auth:",
+    sendCommand,
+  }),
+});
+
+export const transcriptRateLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req: Request) => req.user?.userId ?? req.ip ?? "anonymous",
+  store: new RedisStore({
+    prefix: "rl:transcript:",
     sendCommand,
   }),
 });
