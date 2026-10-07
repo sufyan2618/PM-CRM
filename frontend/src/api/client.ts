@@ -30,7 +30,6 @@ async function readBody(response: Response): Promise<ErrorBody> {
     return { message: text };
   }
 }
-
 async function refreshAccessToken() {
   if (!refreshRequest) {
     refreshRequest = fetch(`${API_ORIGIN}/api/v1/auth/refresh-token`, {
